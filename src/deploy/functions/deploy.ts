@@ -1,20 +1,39 @@
 import * as clc from "cli-color";
 import { setGracefulCleanup } from "tmp";
 
-import { functionsUploadRegion } from "../../api";
-import * as gcp from "../../gcp";
-import { logSuccess, logWarning } from "../../utils";
 import { checkHttpIam } from "./checkIam";
+import { functionsUploadRegion } from "../../api";
+import { logSuccess, logWarning } from "../../utils";
+import * as args from "./args";
+import * as backend from "./backend";
+import * as fs from "fs";
+import * as gcs from "../../gcp/storage";
+import * as gcf from "../../gcp/cloudfunctions";
+import { Options } from "../../options";
+import { Config } from "../../config";
+import * as utils from "../../utils";
 
 const GCP_REGION = functionsUploadRegion;
 
 setGracefulCleanup();
 
-async function uploadSource(context: any): Promise<void> {
-  const uploadUrl = await gcp.cloudfunctions.generateUploadUrl(context.projectId, GCP_REGION);
+async function uploadSourceV1(context: args.Context): Promise<void> {
+  const uploadUrl = await gcf.generateUploadUrl(context.projectId, GCP_REGION);
   context.uploadUrl = uploadUrl;
-  const apiUploadUrl = uploadUrl.replace("https://storage.googleapis.com", "");
-  await gcp.storage.upload(context.functionsSource, apiUploadUrl);
+  const uploadOpts = {
+    file: context.functionsSource!,
+    stream: fs.createReadStream(context.functionsSource!),
+  };
+  await gcs.upload(uploadOpts, uploadUrl);
+}
+
+async function uploadSourceV2(context: args.Context): Promise<void> {
+  const bucket = "staging." + (await gcs.getDefaultBucket(context.projectId));
+  const uploadOpts = {
+    file: context.functionsSource!,
+    stream: fs.createReadStream(context.functionsSource!),
+  };
+  context.storageSource = await gcs.uploadObject(uploadOpts, bucket);
 }
 
 /**
@@ -23,27 +42,44 @@ async function uploadSource(context: any): Promise<void> {
  * @param options The command-wide options object.
  * @param payload The deploy payload.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function deploy(context: any, options: any, payload: any): Promise<void> {
-  if (options.config.get("functions")) {
-    context.existingFunctions = await gcp.cloudfunctions.listAllFunctions(context.projectId);
+export async function deploy(
+  context: args.Context,
+  options: Options,
+  payload: args.Payload
+): Promise<void> {
+  if (!options.config.src.functions) {
+    return;
+  }
 
-    await checkHttpIam(context, options, payload);
+  await checkHttpIam(context, options, payload);
 
-    if (!context.functionsSource) {
-      return;
+  if (!context.functionsSource) {
+    return;
+  }
+
+  try {
+    const want = payload.functions!.backend;
+    const uploads: Promise<void>[] = [];
+    if (want.cloudFunctions.some((fn) => fn.apiVersion === 1)) {
+      uploads.push(uploadSourceV1(context));
     }
-    try {
-      await uploadSource(context);
-      logSuccess(
-        clc.green.bold("functions:") +
-          " " +
-          clc.bold(options.config.get("functions.source")) +
-          " folder uploaded successfully"
-      );
-    } catch (err) {
-      logWarning(clc.yellow("functions:") + " Upload Error: " + err.message);
-      throw err;
+    if (want.cloudFunctions.some((fn) => fn.apiVersion === 2)) {
+      uploads.push(uploadSourceV2(context));
     }
+    await Promise.all(uploads);
+
+    utils.assertDefined(
+      options.config.src.functions.source,
+      "Error: 'functions.source' is not defined"
+    );
+    logSuccess(
+      clc.green.bold("functions:") +
+        " " +
+        clc.bold(options.config.src.functions.source) +
+        " folder uploaded successfully"
+    );
+  } catch (err) {
+    logWarning(clc.yellow("functions:") + " Upload Error: " + err.message);
+    throw err;
   }
 }

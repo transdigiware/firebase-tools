@@ -28,7 +28,7 @@ describe("extensionsHelper", () => {
         },
       ];
       const testParam = { VAR_ONE: "foo", VAR_TWO: "bar", UNUSED: "faz" };
-      expect(extensionsHelper.substituteParams(testResources, testParam)).to.deep.equal([
+      expect(extensionsHelper.substituteParams<any>(testResources, testParam)).to.deep.equal([
         {
           resourceOne: {
             name: "foo",
@@ -67,7 +67,7 @@ describe("extensionsHelper", () => {
       },
     ];
     const testParam = { VAR_ONE: "foo", VAR_TWO: "bar", UNUSED: "faz" };
-    expect(extensionsHelper.substituteParams(testResources, testParam)).to.deep.equal([
+    expect(extensionsHelper.substituteParams<any>(testResources, testParam)).to.deep.equal([
       {
         resourceOne: {
           name: "foo",
@@ -105,19 +105,22 @@ describe("extensionsHelper", () => {
       ENV_VAR_FOUR: "users/{sender}.friends",
     };
 
-    const exampleParamSpec = [
+    const exampleParamSpec: extensionsApi.Param[] = [
       {
         param: "ENV_VAR_ONE",
+        label: "env1",
         required: true,
       },
       {
         param: "ENV_VAR_TWO",
+        label: "env2",
         required: true,
         validationRegex: "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$",
         validationErrorMessage: "You must provide a valid email address.\n",
       },
       {
         param: "ENV_VAR_THREE",
+        label: "env3",
         default: "https://${PROJECT_ID}.web.app/?acceptInvitation={token}",
         validationRegex: ".*\\{token\\}.*",
         validationErrorMessage:
@@ -125,6 +128,7 @@ describe("extensionsHelper", () => {
       },
       {
         param: "ENV_VAR_FOUR",
+        label: "env4",
         default: "users/{sender}.friends",
         required: false,
         validationRegex: ".+/.+\\..+",
@@ -159,19 +163,22 @@ describe("extensionsHelper", () => {
   });
 
   describe("validateCommandLineParams", () => {
-    const exampleParamSpec = [
+    const exampleParamSpec: extensionsApi.Param[] = [
       {
         param: "ENV_VAR_ONE",
+        label: "env1",
         required: true,
       },
       {
         param: "ENV_VAR_TWO",
+        label: "env2",
         required: true,
         validationRegex: "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$",
         validationErrorMessage: "You must provide a valid email address.\n",
       },
       {
         param: "ENV_VAR_THREE",
+        label: "env3",
         default: "https://${PROJECT_ID}.web.app/?acceptInvitation={token}",
         validationRegex: ".*\\{token\\}.*",
         validationErrorMessage:
@@ -179,6 +186,7 @@ describe("extensionsHelper", () => {
       },
       {
         param: "ENV_VAR_FOUR",
+        label: "env3",
         default: "users/{sender}.friends",
         required: false,
         validationRegex: ".+/.+\\..+",
@@ -212,7 +220,7 @@ describe("extensionsHelper", () => {
       }).to.throw(FirebaseError);
     });
 
-    it("should throw a error if a required param is missing", () => {
+    it("should throw an error if a required param is missing", () => {
       const testParamSpec = [
         {
           param: "HI",
@@ -410,6 +418,7 @@ describe("extensionsHelper", () => {
         version: "0.1.0",
         specVersion: "v1beta",
         resources: [],
+        params: [],
         sourceUrl: "https://test-source.fake",
         license: "apache-2.0",
       };
@@ -424,6 +433,7 @@ describe("extensionsHelper", () => {
         version: "0.1.0",
         specVersion: "v1beta",
         resources: [],
+        params: [],
         sourceUrl: "https://test-source.fake",
       };
 
@@ -437,6 +447,7 @@ describe("extensionsHelper", () => {
         version: "0.1.0",
         specVersion: "v1beta",
         resources: [],
+        params: [],
         sourceUrl: "https://test-source.fake",
         license: "invalid-license",
       };
@@ -574,12 +585,16 @@ describe("extensionsHelper", () => {
         extensionsHelper.validateSpec(testSpec);
       }).to.throw(FirebaseError, /Invalid type/);
     });
-    it("should error if a param has an invalid default.", () => {
+    it("should error if a param selectResource missing resourceType.", () => {
       const testSpec = {
         version: "0.1.0",
         specVersion: "v1beta",
         params: [
-          { type: extensionsHelper.SpecParamType.STRING, validationRegex: "test", default: "fail" },
+          {
+            type: extensionsHelper.SpecParamType.SELECTRESOURCE,
+            validationRegex: "test",
+            default: "fail",
+          },
         ],
         resources: [],
         sourceUrl: "https://test-source.fake",
@@ -588,7 +603,7 @@ describe("extensionsHelper", () => {
 
       expect(() => {
         extensionsHelper.validateSpec(testSpec);
-      }).to.throw(FirebaseError, /default/);
+      }).to.throw(FirebaseError, /must have resourceType/);
     });
   });
 
@@ -698,14 +713,17 @@ describe("extensionsHelper", () => {
         version: "0.0.0",
         sourceUrl: testUrl,
         resources: [],
+        params: [],
       },
     };
 
     beforeEach(() => {
       archiveStub = sinon.stub(archiveDirectory, "archiveDirectory").resolves({});
-      uploadStub = sinon
-        .stub(storage, "uploadObject")
-        .resolves("/firebase-ext-eap-uploads/object.zip");
+      uploadStub = sinon.stub(storage, "uploadObject").resolves({
+        bucket: "firebase-ext-eap-uploads",
+        object: "object.zip",
+        generation: 42,
+      });
       createSourceStub = sinon.stub(extensionsApi, "createSource").resolves(testSource);
       deleteStub = sinon.stub(storage, "deleteObject").resolves();
     });
@@ -777,6 +795,7 @@ describe("extensionsHelper", () => {
         "0.1.0": "projects/test-proj/sources/def456",
         "0.1.1": testOnePlatformSourceName,
       },
+      publisher: "firebase",
     };
     const testSource: ExtensionSource = {
       name: "test",
@@ -788,6 +807,7 @@ describe("extensionsHelper", () => {
         version: "0.0.0",
         sourceUrl: "",
         resources: [],
+        params: [],
       },
     };
 

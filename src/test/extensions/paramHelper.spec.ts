@@ -5,7 +5,7 @@ import * as dotenv from "dotenv";
 import * as fs from "fs-extra";
 
 import { FirebaseError } from "../../error";
-import * as logger from "../../logger";
+import { logger } from "../../logger";
 import { ExtensionInstance, Param, ParamType } from "../../extensions/extensionsApi";
 import * as extensionsHelper from "../../extensions/extensionsHelper";
 import * as paramHelper from "../../extensions/paramHelper";
@@ -82,7 +82,7 @@ describe("paramHelper", () => {
       dotenvStub = sinon.stub(dotenv, "parse");
       sinon.stub(extensionsHelper, "getFirebaseProjectParams").resolves({ PROJECT_ID });
       promptStub = sinon.stub(prompt, "promptOnce").resolves("user input");
-      loggerSpy = sinon.spy(logger, "info");
+      loggerSpy = sinon.spy(logger, "warn");
     });
 
     afterEach(() => {

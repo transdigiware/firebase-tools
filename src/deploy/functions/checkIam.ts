@@ -1,12 +1,13 @@
-import { has, last } from "lodash";
 import { bold } from "cli-color";
 
-import { debug } from "../../logger";
-import * as track from "../../track";
-import { getReleaseNames, getFilterGroups } from "../../functionsDeployHelper";
-import { CloudFunctionTrigger } from "./deploymentPlanner";
+import { logger } from "../../logger";
+import { getFilterGroups, functionMatchesAnyGroup } from "./functionsDeployHelper";
 import { FirebaseError } from "../../error";
 import { testIamPermissions, testResourceIamPermissions } from "../../gcp/iam";
+import * as args from "./args";
+import * as backend from "./backend";
+import * as track from "../../track";
+import { Options } from "../../options";
 
 const PERMISSION = "cloudfunctions.functions.setIamPolicy";
 
@@ -27,7 +28,7 @@ export async function checkServiceAccountIam(projectId: string): Promise<void> {
     );
     passed = iamResult.passed;
   } catch (err) {
-    debug("[functions] service account IAM check errored, deploy may fail:", err);
+    logger.debug("[functions] service account IAM check errored, deploy may fail:", err);
     // we want to fail this check open and not rethrow since it's informational only
     return;
   }
@@ -51,27 +52,28 @@ export async function checkServiceAccountIam(projectId: string): Promise<void> {
  * @param options The command-wide options object.
  * @param payload The deploy payload.
  */
-export async function checkHttpIam(context: any, options: any, payload: any): Promise<void> {
-  const functionsInfo = payload.functions.triggers;
+export async function checkHttpIam(
+  context: args.Context,
+  options: Options,
+  payload: args.Payload
+): Promise<void> {
+  const functions = payload.functions!.backend.cloudFunctions;
   const filterGroups = context.filters || getFilterGroups(options);
 
-  const httpFunctionNames: string[] = functionsInfo
-    .filter((f: CloudFunctionTrigger) => has(f, "httpsTrigger"))
-    .map((f: CloudFunctionTrigger) => f.name);
-  const httpFunctionFullNames: string[] = getReleaseNames(httpFunctionNames, [], filterGroups);
-  const existingFunctionFullNames: string[] = context.existingFunctions.map(
-    (f: { name: string }) => f.name
-  );
+  const httpFunctions = functions
+    .filter((f) => !backend.isEventTrigger(f.trigger))
+    .filter((f) => functionMatchesAnyGroup(f, filterGroups));
+  const existingFunctions = (await backend.existingBackend(context)).cloudFunctions;
 
-  const newHttpFunctions = httpFunctionFullNames.filter(
-    (name) => !existingFunctionFullNames.includes(name)
+  const newHttpFunctions = httpFunctions.filter(
+    (func) => !existingFunctions.find(backend.sameFunctionName(func))
   );
 
   if (newHttpFunctions.length === 0) {
     return;
   }
 
-  debug(
+  logger.debug(
     "[functions] found",
     newHttpFunctions.length,
     "new HTTP functions, testing setIamPolicy permission..."
@@ -82,7 +84,10 @@ export async function checkHttpIam(context: any, options: any, payload: any): Pr
     const iamResult = await testIamPermissions(context.projectId, [PERMISSION]);
     passed = iamResult.passed;
   } catch (e) {
-    debug("[functions] failed http create setIamPolicy permission check. deploy may fail:", e);
+    logger.debug(
+      "[functions] failed http create setIamPolicy permission check. deploy may fail:",
+      e
+    );
     // fail open since this is an informational check
     return;
   }
@@ -95,9 +100,9 @@ export async function checkHttpIam(context: any, options: any, payload: any): Pr
       )} to deploy new HTTPS functions. The permission ${bold(
         PERMISSION
       )} is required to deploy the following functions:\n\n- ` +
-        newHttpFunctions.map((name) => last(name.split("/"))).join("\n- ") +
+        newHttpFunctions.map((func) => func.id).join("\n- ") +
         `\n\nTo address this error, please ask a project Owner to assign your account the "Cloud Functions Admin" role at the following URL:\n\nhttps://console.cloud.google.com/iam-admin/iam?project=${context.projectId}`
     );
   }
-  debug("[functions] found setIamPolicy permission, proceeding with deploy");
+  logger.debug("[functions] found setIamPolicy permission, proceeding with deploy");
 }

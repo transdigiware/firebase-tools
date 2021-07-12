@@ -5,7 +5,7 @@ import * as dotenv from "dotenv";
 import * as fs from "fs-extra";
 
 import { FirebaseError } from "../error";
-import * as logger from "../logger";
+import { logger } from "../logger";
 import * as extensionsApi from "./extensionsApi";
 import {
   getFirebaseProjectParams,
@@ -105,10 +105,16 @@ export async function promptForNewParams(
     return param1.type === param2.type && param1.param === param2.param;
   };
   let paramsDiffDeletions = _.differenceWith(spec.params, _.get(newSpec, "params", []), comparer);
-  paramsDiffDeletions = substituteParams(paramsDiffDeletions, firebaseProjectParams);
+  paramsDiffDeletions = substituteParams<extensionsApi.Param[]>(
+    paramsDiffDeletions,
+    firebaseProjectParams
+  );
 
   let paramsDiffAdditions = _.differenceWith(newSpec.params, _.get(spec, "params", []), comparer);
-  paramsDiffAdditions = substituteParams(paramsDiffAdditions, firebaseProjectParams);
+  paramsDiffAdditions = substituteParams<extensionsApi.Param[]>(
+    paramsDiffAdditions,
+    firebaseProjectParams
+  );
 
   if (paramsDiffDeletions.length) {
     logger.info("The following params will no longer be used:");

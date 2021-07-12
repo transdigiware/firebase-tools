@@ -1,16 +1,9 @@
 import * as clc from "cli-color";
 
-import * as logger from "../../logger";
-import { getFunctionId, getFunctionLabel } from "../../functionsDeployHelper";
+import { logger } from "../../logger";
+import { getFunctionId, getFunctionLabel } from "./functionsDeployHelper";
 import { FirebaseError } from "../../error";
-
-type OperationType =
-  | "create"
-  | "update"
-  | "delete"
-  | "upsert schedule"
-  | "delete schedule"
-  | "make public";
+import { OperationType } from "./tasks";
 
 type Level = "error" | "warning";
 
